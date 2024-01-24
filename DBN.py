@@ -1,6 +1,5 @@
-import numpy as np
 import tensorflow as tf
-
+import tensorflow_probability as tfp
 from tensorflow import keras
 from tensorflow.keras import layers
 
@@ -17,34 +16,86 @@ class RBM(keras.Model):
         self.num_epoch = num_epoch
         self.k = k
         self.W, self.a, self.b = self._init_parameters(id)
-        
+        if batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer")
+        self.batch_size = batch_size
+
     def _init_parameters(self, id):
-        """
-        Initializing parameters for the id-th model
-        including weights and biases
-        @param id: the id-th model
-        """
         W = self.add_weight(shape=(self.num_v, self.num_h), initializer='random_normal', trainable=True, name='W'+str(id))
         a = self.add_weight(shape=(self.num_v,), initializer='zeros', trainable=True, name='a'+str(id))
         b = self.add_weight(shape=(self.num_h,), initializer='zeros', trainable=True, name='b'+str(id))
         return W, a, b
-# Define RBM train function using contrastive divergence
-    def train(self, input_data):
-        """
-        Training the model using contrastive divergence
-        @param input_data: input data for training
-        """
-        for epoch in range(self.num_epoch):
-            for batch in range(0, len(input_data), self.batch_size):
-                batch_data = input_data[batch: batch + self.batch_size]
-                v0 = batch_data
-                for k in range(self.k):
-                    _, prob_h_v0, vk, prob_h_vk = self._gibbs_sampling(v0)
-                    v0 = vk
-                self._update_parameters(batch_data, prob_h_v0, vk, prob_h_vk)
-        return self.W, self.a, self.b
     
-# Define hidden layer function
+    # Define a call method for the RBM using a sigmoid activation function
+    def call(self, v):
+        # Perform Gibbs sampling and return the final visible layer
+        _, _, vk, _ = self._gibbs_sampling(v)
+        return tf.sigmoid(vk)
+
+    def _gibbs_sampling(self, v):
+        print("Shape of visible units v:", v.shape)
+        print("Shape of weight matrix W:", self.W.shape)
+        print("Shape of visible bias a:", self.a.shape)
+        print("Shape of hidden bias b:", self.b.shape)
+        v0 = v
+        prob_h_v0 = self._prob_h_given_v(v0)
+        vk = v
+        prob_h_vk = prob_h_v0
+        for _ in range(self.k):
+            hk = self._bernoulli_sampling(prob_h_vk)
+            prob_v_hk = self._prob_h_given_v(vk)
+            vk = self._bernoulli_sampling(prob_v_hk)
+            prob_h_vk = self._prob_h_given_v(vk)
+
+        mask = tf.cast(tf.equal(v0, 0), dtype=tf.float32)
+        vk = mask * v0 + (1 - mask) * vk
+        prob_h_vk = prob_h_vk * mask + prob_h_v0 * (1 - mask)
+        print("v0 shape:", v0.shape)
+        print("prob_h_v0 shape:", prob_h_v0.shape)
+        print("prob_h_vk shape:", prob_h_vk.shape)
+        return v0, prob_h_v0, vk, prob_h_vk
+
+    def _prob_v_given_h(self, h):
+        return tf.sigmoid(tf.add(self.a(h), tf.matmul(h, tf.transpose(self.W))))
+
+    def _prob_h_given_v(self, v):
+        return tf.sigmoid(tf.add(self.b(v), tf.matmul(v, self.W)))
+
+    def _bernoulli_sampling(self, prob):
+        distribution = tfp.distributions.Bernoulli(probs=prob, dtype=tf.float32)
+        return tf.cast(distribution.sample(), tf.float32)
+
+    def _compute_gradient(self, v0, prob_h_v0, vk, prob_h_vk):
+        outer_product0 = tf.matmul(tf.transpose(v0), prob_h_v0)
+        outer_productk = tf.matmul(tf.transpose(vk), prob_h_vk)
+        W_grad = tf.reduce_mean(outer_product0 - outer_productk, axis=0)
+        a_grad = tf.reduce_mean(v0 - vk, axis=0)
+        b_grad = tf.reduce_mean(prob_h_v0 - prob_h_vk, axis=0)
+        return W_grad, a_grad, b_grad
+
+    def _optimize(self, v):
+        v0, prob_h_v0, vk, prob_h_vk = self._gibbs_sampling(v)
+        W_grad, a_grad, b_grad = self._compute_gradient(v0, prob_h_v0, vk, prob_h_vk)
+        self.W.assign_add(self.learning_rate * W_grad)
+        self.a.assign_add(self.learning_rate * a_grad)
+        self.b.assign_add(self.learning_rate * b_grad)
+        error = tf.reduce_mean(tf.square(v0 - vk))
+        return error
+    def train(self, X_train):
+        """
+        Model training
+        @param X_train: training dataset
+        """
+        model = RBM(self.num_v, self.num_h, self.batch_size, self.learning_rate, self.num_epoch, self.k)
+        model.compile(optimizer=keras.optimizers.Adam(learning_rate=self.learning_rate),
+                      loss=self.compute_loss)
+
+        model.fit(X_train, X_train, batch_size=self.batch_size, epochs=self.num_epoch, verbose=1)
+
+        # Print training error
+        train_loss = model.evaluate(X_train, X_train, verbose=0)
+        print("Training Error: ", train_loss)
+
     def hidden_layer(self, input_data, parameters):
         """
         Computing the output of the hidden layer
@@ -57,57 +108,34 @@ class RBM(keras.Model):
 
 # Create Deep-Belief Network class
 class DBN(keras.Model):
-    def __init__(self, num_v, layers, batch_size, learning_rate, num_epoch, k=2):
+
+    def __init__(self, layer_sizes, batch_size, learning_rates, num_epoch, k=2):
         super(DBN, self).__init__()
-        self.num_v = num_v
-        self.layers = layers
-        self.k = k
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
-        self.num_epoch = num_epoch
+        self.rbms = []
+        for i in range(1, len(layer_sizes)):
+            rbm = RBM(num_v=layer_sizes[i-1], id=i,
+                      num_h=layer_sizes[i], batch_size=batch_size,
+                      learning_rate=learning_rates[i-1], num_epoch=num_epoch, 
+                      k=k)
+            self.rbms.append(rbm)
 
-        self.rbm_layers = []
-        for num_h in layers:
-            self.rbm_layers.append(self._create_rbm_layer(num_v, num_h))
-            num_v = num_h
-
-    def call(self, v):
-        h = v
-        for rbm in self.rbm_layers:
-            h = rbm.hidden_layer(h)
-        return h
-    
-# Create Stacked-RBM layers
-    def _create_rbm_layer(self, num_v, num_h):
-        rbm = RBM(num_v, num_h, self.batch_size, self.learning_rate, self.num_epoch, self.k)
-        return rbm
-
-# Define update parameters function
-    def _update_parameters(self, input_data):
-        """
-        Updating parameters
-        @param input_data: input data for training
-        """
-        with tf.GradientTape() as tape:
-            v0, prob_h_v0, vk, prob_h_vk = self._gibbs_sampling(input_data)
-            loss = self._compute_loss(v0, prob_h_v0, vk, prob_h_vk)
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-
-# Define train function
     def train(self, X_train):
         """
         Model training
-        @param X_train: input data for training
+        @param X_train: training dataset
         """
         self.rbms_para = []
+        input_data = None
         for rbm in self.rbms:
             if input_data is None:
                 input_data = X_train.copy()
-            parameters = rbm.train(input_data)
+            rbm.compile(optimizer=keras.optimizers.Adam(learning_rate=rbm.learning_rate),
+                        loss=rbm.compute_loss)
+            rbm.fit(input_data, input_data, batch_size=rbm.batch_size, epochs=rbm.num_epoch, verbose=1)
+            parameters = (rbm.W.numpy(), rbm.a.numpy(), rbm.b.numpy())
             self.rbms_para.append(parameters)
             input_data = rbm.hidden_layer(input_data, parameters)
-# Define predict function
+
     def predict(self, X):
         """
         Computing the output of the last layer
@@ -118,5 +146,5 @@ class DBN(keras.Model):
             if data is None:
                 data = X.copy()
             data = rbm.hidden_layer(data, parameters)
+
         return data
-    
