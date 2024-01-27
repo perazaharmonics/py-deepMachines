@@ -77,5 +77,10 @@ precision, recall, th = precision_recall_curve(y_test, recon_error)
 plt.plot(recall, precision, 'b', label='Precision-Recall curve')
 plt.title('Precision-Recall Curve')
 plt.xlabel('Recall')
+
+threshold = 0.000001
+y_pred = [1 if e > threshold else 0 for e in recon_error]
+conf_matrix = confusion_matrix(y_test, y_pred)
+print(conf_matrix)
 plt.ylabel('Precision')
 plt.show()
