@@ -8,6 +8,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc, confusion_matrix
 import matplotlib.pyplot as plt
 
+
+# Create Jacobian matrix penalty layer 
+# The Jacobian Contractive Loss serves as a regularization term to the loss function
+# Minimizing through Jacobian, the unsupervised model learns more robust features.
+# It serves to penalize large changes of the prediction y with respect to small changes in the input signal x.
+# Doing so, the model can learn against the adverse of noise.
+
 class ContractiveLossLayer(Layer):
     def __init__(self, taps, **kwargs):
         self.is_placeholder = True
