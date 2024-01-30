@@ -94,8 +94,6 @@ print(X_train.shape)  # This should be (number of samples, 29)
 contract_ae.fit(X_train, X_train, epochs=num_epoch, batch_size=batch_size, shuffle=True, validation_data=(X_test, X_test), verbose=1, callbacks=[tensorboard, checkpoint])
 print(X_test.shape)   # This should also be (number of samples, 29)
 
-contract_ae.fit(X_train, X_train, epochs=num_epoch, batch_size=batch_size, shuffle=True, validation_data=(X_test, X_test), verbose=1, callbacks=[tensorboard, checkpoint])
-
 # Now we feed the testing set to the well-trained model and compute the reconstruction error that's measured by mse
 recon = contract_ae.predict(X_test)
 recon_error = np.mean(np.square(X_test - recon), axis=1)
