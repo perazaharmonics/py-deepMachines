@@ -24,6 +24,18 @@ class ContractiveLossLayer(Layer):
         self.add_loss(contract, inputs=x)
         return x
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "taps": self.taps.tolist(),  # convert numpy array to list for serialization
+        })
+        return config
+    
+    @classmethod
+    def from_config(cls, config):
+        config["taps"] = np.array(config["taps"])  # convert list back to numpy array
+        return cls(**config)
+
 data = pd.read_csv("creditcard.csv").drop(['Time'], axis=1)
 print(data.shape)
 
