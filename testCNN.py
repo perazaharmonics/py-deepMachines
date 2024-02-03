@@ -1,146 +1,81 @@
 import numpy as np
-import pickle
-import os
 import tensorflow as tf
-import tensorrt as trt
-from sklearn.utils import shuffle
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.datasets import cifar10
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.utils import shuffle
+import CNN1
 import matplotlib.pyplot as plt
 
-class Data:
-    def __init__(self, dataDir, fileName, batchSize, imageSize, seed, learningRate, dropOut, classNum=10):
-        self.dataDir = dataDir
-        self.fileName = fileName
-        self.classNum = classNum
-        self.batchSize = batchSize
-        self.imageSize = imageSize
-        self.seed = seed
-        self.learningRate = learningRate
-        self.dropOut = dropOut
-        self.model = self.build_model()
-        self.model.compile(optimizer=Adam(learning_rate=self.learningRate),
-                           loss='categorical_crossentropy',
-                           metrics=['accuracy'])
-        self.model.summary()
+def load_and_preprocess_data():
+    # Load CIFAR-10 dataset
+    (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 
-        self.labelsDicti = {
-            0: 'airplane',
-            1: 'automobile',
-            2: 'bird',
-            3: 'cat',
-            4: 'deer',
-            5: 'dog',
-            6: 'frog',
-            7: 'horse',
-            8: 'ship',
-            9: 'truck'
-        }
-    # Rest of the code remains the same
+    # Normalize pixel values
+    x_train, x_test = x_train / 255.0, x_test / 255.0
 
-    def load_data_batch(self):
-        with open(os.path.join(self.dataDir, self.fileName), 'rb') as f:
-            data = pickle.load(f, encoding='latin1')
-            self.images = data['data']
-            self.labels = data['labels']
+    # Convert class vectors to binary class matrices (for use with categorical_crossentropy)
+    y_train, y_test = to_categorical(y_train, 10), to_categorical(y_test, 10)
 
-    def reshape_data(self):
-        self.images = self.images.reshape(10000, 3, 32, 32).transpose(0, 2, 3, 1)
-        self.labels = np.array(self.labels)
+    return (x_train, y_train), (x_test, y_test)
 
-    def one_hot_encoding(self):
-        self.labels = to_categorical(self.labels, self.classNum)
+def main():
+    # Load and preprocess the CIFAR-10 data
+    (x_train, y_train), (x_test, y_test) = load_and_preprocess_data()
 
-    def normalize_images(self):
-        self.images = self.images / 255.0
+    # Define the model parameters
+    batchSize = 64
+    classNum = 10
+    dropOut = 0.5
+    learningRate = 0.001
+    epochs = 10
+    imageSize = (32, 32)
 
-    def shuffle_data(self):
-        self.images, self.labels = shuffle(self.images, self.labels, random_state=self.seed)
+    # Define label dictionary
+    label_dict = {
+    0: 'airplane',
+    1: 'automobile',
+    2: 'bird',
+    3: 'cat',
+    4: 'deer',
+    5: 'dog',
+    6: 'frog',
+    7: 'horse',
+    8: 'ship',
+    9: 'truck'
+    }
 
-    def generate_batches(self):
-        for i in range(0, len(self.images), self.batchSize):
-            end = min(i + self.batchSize, len(self.images))
-            yield (self.images[i: end], self.labels[i: end])
+    # Create a Data object
+    dataObj = CNN1.Data('path_to_data', 'filename', batchSize, imageSize, seed=42, learningRate=learningRate, dropOut=dropOut)
 
-    def augment_data(self):
-        datagen = ImageDataGenerator(
-            rotation_range=20,
-            width_shift_range=0.1,
-            height_shift_range=0.1,
-            horizontal_flip=True
-        )
-        datagen.fit(self.images)
+    # Create a CNNModel object
+    model = CNN1.CNNModel(batchSize, imageSize, classNum, dropOut, learningRate, epochs)
+    dataObj.images, dataObj.labels = x_train, y_train  # Assuming Data class can directly accept preloaded data
 
-        augmented_images = []
-        augmented_labels = []
+    # Train the model
+    history = model.train(dataObj, (x_test, y_test))
 
-        for batchX, batchY in self.generate_batches():
-            augmented_batchX = datagen.flow(batchX, batch_size=self.batchSize, shuffle=False).next()
-            augmented_images.append(augmented_batchX)
-            augmented_labels.append(batchY)
+    # Optionally, save the model
+    model.save('path_to_save_model')
 
-        self.images = np.concatenate(augmented_images)
-        self.labels = np.concatenate(augmented_labels)
+    # Plot the images
+    fig, axes = plt.subplots(2, 5, figsize=(10, 4))
+    for i, ax in enumerate(axes.flat):
+        ax.imshow(x_train[i])
+        ax.axis('off')
+        ax.set_title(f'Label: {label_dict[np.argmax(y_train[i])]}')
+    plt.tight_layout()
+    plt.show()
 
-    def build_model(self):
-        model = Sequential([
-            Conv2D(64, (3, 3), padding='same', activation='relu', input_shape=(self.imageSize[0], self.imageSize[1], 3)),
-            MaxPooling2D((2, 2)),
-            Conv2D(128, (3, 3), padding='same', activation='relu'),
-            MaxPooling2D((2, 2)),
-            Conv2D(256, (3, 3), padding='same', activation='relu'),
-            MaxPooling2D((2, 2)),
-            Conv2D(512, (3, 3), padding='same', activation='relu'),
-            Flatten(),
-            Dense(1024, activation='relu'),
-            Dropout(self.dropOut),
-            Dense(512, activation='relu'),
-            Dropout(self.dropOut),
-            Dense(self.classNum, activation='softmax')
-        ])
-        return model
+    # Plot accuracy
+    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['val_accuracy'])
+    plt.title('Model Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.show()
 
-class CNNModel:
-    def __init__(self, batchSize, imageSize, classNum, dropOut, learningRate, epochs):
-        self.batchSize = batchSize
-        self.imageSize = imageSize  # Make sure this is a tuple or list, not an integer
-        self.classNum = classNum
-        self.dropOut = dropOut
-        self.learningRate = learningRate
-        self.epochs = epochs
-        self.model = self.build_model()
+    # Add other helpful plots here
 
-        self.model.compile(optimizer=Adam(learning_rate=self.learningRate),
-                           loss='categorical_crossentropy',
-                           metrics=['accuracy'])
-
-    def train(self, dataObj):
-        self.model.fit(dataObj.images, dataObj.labels, epochs=self.epochs, verbose=1, batch_size=self.batchSize)
-
-    def save(self, savePath):
-        self.model.save(savePath)
-
-    def build_model(self):
-        model = Sequential([
-            Conv2D(64, (3, 3), padding='same', activation='relu', input_shape=(self.imageSize[0], self.imageSize[1], 3)),
-            BatchNormalization(),
-            MaxPooling2D((2, 2)),
-            Conv2D(128, (3, 3), padding='same', activation='relu'),
-            BatchNormalization(),
-            MaxPooling2D((2, 2)),
-            Conv2D(256, (3, 3), padding='same', activation='relu'),
-            BatchNormalization(),
-            MaxPooling2D((2, 2)),
-            Conv2D(512, (3, 3), padding='same', activation='relu'),
-            BatchNormalization(),
-            Flatten(),
-            Dense(1024, activation='relu'),
-            Dropout(self.dropOut),
-            Dense(512, activation='relu'),
-            Dropout(self.dropOut),
-            Dense(self.classNum, activation='softmax')
-        ])
-        return model
+if __name__ == '__main__':
+    main()
