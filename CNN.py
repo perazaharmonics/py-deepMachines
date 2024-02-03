@@ -117,8 +117,9 @@ class CNNModel:
                            loss='categorical_crossentropy',
                            metrics=['accuracy'])
 
-    def train(self, dataObj):
-        self.model.fit(dataObj.images, dataObj.labels, epochs=self.epochs, verbose=1, batch_size=self.batchSize)
+    def train(self, dataObj, val_data=None):
+        history = self.model.fit(dataObj.images, dataObj.labels, validation_data=val_data, epochs=self.epochs, verbose=1, batch_size=self.batchSize)
+        return history
 
     def save(self, savePath):
         self.model.save(savePath)
