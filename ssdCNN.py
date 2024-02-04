@@ -1,6 +1,6 @@
 import tensorflow as tf
+from tensorflow import keras
 import numpy as np
-import matplotlib.pyplot as plt
 import cv2
 import os
 import argparse
@@ -18,7 +18,7 @@ def read_image(imPath):
     return img
 
 # Path to the directory containing the saved model
-MODEL_DIR = '/home/perazaharmonics/Python_ML/ssd_mobilenet_v2_fpnlite_320x320_coco17_tpu-8/saved_model'
+MODEL_DIR = 'ssd_mobilenet_v2_fpnlite_320x320_coco17_tpu-8/saved_model'
 
 # Load the TensorFlow SavedModel
 loaded_model = tf.saved_model.load(MODEL_DIR)
@@ -56,9 +56,9 @@ for filename in os.listdir(IM_PATH):
         for i, box in enumerate(boxes):
             if scores[i] > 0.5:  # Confidence threshold
                 ymin, xmin, ymax, xmax = box
-                (left, right, top, bottom) = (xmin * imageWidth, xmax * imageWidth,
-                                            ymin * imageHeight, ymax * imageHeight)
-                cv2.rectangle(image, (int(left), int(top)), (int(right), int(bottom)), (255, 255, 0), thickness=1)
+                (left, right, top, bottom) = (int(xmin * imageWidth), int(xmax * imageWidth),
+                                            int(ymin * imageHeight), int(ymax * imageHeight))
+                cv2.rectangle(image, (left, top), (right, bottom), (255, 255, 0), thickness=1)
                 print('Class:', classes[i], 'Confidence:', scores[i])
 
         cv2.imshow('Image', image)
