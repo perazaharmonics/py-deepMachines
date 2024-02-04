@@ -51,16 +51,16 @@ for filename in os.listdir(IM_PATH):
         classes = detections['detection_classes'][0].numpy().astype(np.int32)
         scores = detections['detection_scores'][0].numpy()
 
-        # Visualization of the results of a detection
+        # Visualization of the results of a detection        
         imageHeight, imageWidth, _ = image.shape
         for i, box in enumerate(boxes):
             if scores[i] > 0.5:  # Confidence threshold
                 ymin, xmin, ymax, xmax = box
                 (left, right, top, bottom) = (xmin * imageWidth, xmax * imageWidth,
-                                              ymin * imageHeight, ymax * imageHeight)
+                                            ymin * imageHeight, ymax * imageHeight)
                 cv2.rectangle(image, (int(left), int(top)), (int(right), int(bottom)), (255, 255, 0), thickness=1)
                 print('Class:', classes[i], 'Confidence:', scores[i])
 
-        plt.figure(figsize=(10, 10))
-        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        plt.show()
+        cv2.imshow('Image', image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
